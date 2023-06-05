@@ -5,14 +5,19 @@ using System.Net.Http;
 using Newtonsoft.Json;
 using System.Windows;
 using System.Collections;
+using LiveCharts;
+using LiveCharts.Wpf;
+using LiveCharts.Wpf.Charts.Base;
+using System.Globalization;
 
 namespace CryptoCurrencyApp
 {
-    public partial class CryptoCurrencyDetailsPage : Window
+    public partial class CryptoCurrencyDetailsPage : Page
     {
         private readonly HttpClient httpClient = new HttpClient();
 
         public string CurrencyId { get; set; }
+        private Frame mainFrame;
         public CryptocurrencyInfo Currency { get; set; }
 
         public CryptoCurrencyDetailsPage()
@@ -20,11 +25,12 @@ namespace CryptoCurrencyApp
             InitializeComponent();
         }
 
-        public CryptoCurrencyDetailsPage(string currencyId) : this()
+        public CryptoCurrencyDetailsPage(string currencyId, Frame mF) : this()
         {
-            InitializeComponent();
             CurrencyId = currencyId;
             LoadCurrencyDetails();
+            LoadCryptoPrices();
+            this.mainFrame = mF;
         }
 
         private async void LoadCurrencyDetails()
@@ -50,6 +56,7 @@ namespace CryptoCurrencyApp
                         priceChangeTextBlock.Text = cryptocurrencyInfos.changePercent24Hr;
                     
                 }
+                Currency = cryptocurrencyInfos;
                 List<CryptocurrencyMarket> marketl = marketResponse?.Data;
                 if (marketl != null)
                 {
@@ -84,29 +91,58 @@ namespace CryptoCurrencyApp
 
             return string.Join("\n", marketTexts);
         }
+
+        private void Button_MainPage_Click(object sender, RoutedEventArgs e)
+        {
+            mainFrame.Navigate(new PageMain(mainFrame));
+        }
+        public async void LoadCryptoPrices()
+        {
+            try
+            {
+                string cryptoHistoryUrl = $"https://api.coincap.io/v2/assets/{CurrencyId}/history?interval=d1";
+                HttpResponseMessage cryptoHistoryResponse = await httpClient.GetAsync(cryptoHistoryUrl);
+                cryptoHistoryResponse.EnsureSuccessStatusCode();
+                string cryptoHistoryResponseBody = await cryptoHistoryResponse.Content.ReadAsStringAsync();
+                CryptoHistoryResponse historyResponse = JsonConvert.DeserializeObject<CryptoHistoryResponse>(cryptoHistoryResponseBody);
+                SeriesCollection seriesCollection = new SeriesCollection();
+
+
+
+                string currencyInfoUrl = $"https://api.coincap.io/v2/assets/{CurrencyId}";
+                HttpResponseMessage currencyInfoResponse = await httpClient.GetAsync(currencyInfoUrl);
+                currencyInfoResponse.EnsureSuccessStatusCode();
+                string currencyInfoResponseBody = await currencyInfoResponse.Content.ReadAsStringAsync();
+                CryptocurrencyInfoResponse cryptocurrencyInfo = JsonConvert.DeserializeObject<CryptocurrencyInfoResponse>(currencyInfoResponseBody);
+                CryptocurrencyInfo cryptocurrencyInfos = cryptocurrencyInfo?.Data;
+                
+
+
+                LineSeries lineSeries = new LineSeries
+                {
+                    Title = cryptocurrencyInfos.name,
+                    Values = new ChartValues<double>()
+                };
+
+                // Добавление данных в серию графика
+                foreach (CryptoPriceData priceData in historyResponse.Data)
+                {
+                    
+                    DateTime timestamp = DateTimeOffset.FromUnixTimeMilliseconds(priceData.time).DateTime;
+                    lineSeries.Values.Add(Convert.ToDouble(priceData.priceUsd, CultureInfo.InvariantCulture));
+                }
+
+                seriesCollection.Add(lineSeries);
+                chart.Series = seriesCollection;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
     }
 
-    public class CryptocurrencyInfo
-    {
-        public string id { get; set; }
-        public string name { get; set; }
-        public string priceUsd { get; set; }
-        public string volumeUsd24Hr { get; set; }
-        public string changePercent24Hr { get; set; }
-    }
-    public class CryptocurrencyInfoResponse
-    {
-        public CryptocurrencyInfo Data { get; set; }
-    }
+    
 
-    public class CryptocurrencyMarket
-    {
-        public string exchangeId { get; set; }
-        public string priceUsd { get; set; }
-    }
-
-    public class CryptocurrencyMarketResponse
-    {
-        public List<CryptocurrencyMarket> Data { get; set; }
-    }
+     
 }
